@@ -9,6 +9,7 @@ from reward_agent.models import CreditCard
 from reward_agent.providers import JsonOfferProvider, OpenClawProvider
 from reward_agent.recommender import Recommender, rec_to_dict
 from reward_agent.refresh import refresh_offers, run_refresh_daemon
+from reward_agent.web import run_web_server
 
 
 def load_cards(cards_path: str) -> list[CreditCard]:
@@ -59,6 +60,11 @@ def cmd_record_expense(args: argparse.Namespace) -> None:
     print("Expense recorded")
 
 
+
+
+def cmd_web(args: argparse.Namespace) -> None:
+    run_web_server(db_path=args.db, host=args.host, port=args.port)
+
 def cmd_sync_cards(args: argparse.Namespace) -> None:
     db = Database(args.db)
     cards = load_cards(args.cards)
@@ -98,6 +104,11 @@ def build_parser() -> argparse.ArgumentParser:
     expense.add_argument("--amount", type=float, required=True)
     expense.add_argument("--category", default="")
     expense.set_defaults(func=cmd_record_expense)
+
+    web = sub.add_parser("web")
+    web.add_argument("--host", default="0.0.0.0")
+    web.add_argument("--port", type=int, default=8000)
+    web.set_defaults(func=cmd_web)
     return parser
 
 
