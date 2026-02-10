@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RewardMaximiser · Expenses</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>RewardMaximiser</h1>
+    <nav>
+      <a href="/">Recommendations</a>
+      <a class="active" href="/expenses">Expenses</a>
+    </nav>
+  </header>
+
+  <main class="grid single">
+    <section class="card">
+      <h2>Add expense</h2>
+      <form action="/api/expenses" method="post">
+        <label>Card
+          <select name="card_id" id="cardSelect" required></select>
+        </label>
+        <label>Merchant <input type="text" name="merchant" required /></label>
+        <label>Amount <input type="number" name="amount" step="0.01" min="1" required /></label>
+        <label>Category
+          <select name="category" required>
+            <option value="dining">dining</option>
+            <option value="grocery">grocery</option>
+            <option value="fuel">fuel</option>
+            <option value="travel">travel</option>
+            <option value="shopping">shopping</option>
+            <option value="utilities">utilities</option>
+            <option value="entertainment">entertainment</option>
+            <option value="insurance">insurance</option>
+            <option value="other">other</option>
+          </select>
+        </label>
+        <button type="submit">Save expense</button>
+      </form>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>
