@@ -1,0 +1,8 @@
+[project]
+name = "rewardmaximiser-agent"
+version = "0.1.0"
+description = "Credit-card offer tracking and payment recommendation agent"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

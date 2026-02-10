@@ -1,0 +1,22 @@
+[
+  {
+    "offer_id": "hdfc-zomato-10",
+    "card_id": "hdfc-diners-black",
+    "merchant": "zomato",
+    "channel": "zomato",
+    "discount_type": "percent",
+    "discount_value": 0.10,
+    "min_spend": 500,
+    "max_discount": 300
+  },
+  {
+    "offer_id": "axis-eazydiner-25",
+    "card_id": "axis-atlas",
+    "merchant": "eazydiner",
+    "channel": "eazydiner",
+    "discount_type": "percent",
+    "discount_value": 0.25,
+    "min_spend": 1000,
+    "max_discount": 800
+  }
+]
