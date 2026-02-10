@@ -1,0 +1,22 @@
+[
+  {
+    "offer_id": "sbi-magicpin-15",
+    "card_id": "sbi-cashback",
+    "merchant": "magicpin",
+    "channel": "magicpin",
+    "discount_type": "percent",
+    "discount_value": 0.15,
+    "min_spend": 300,
+    "max_discount": 200
+  },
+  {
+    "offer_id": "axis-swiggy-flat-150",
+    "card_id": "axis-atlas",
+    "merchant": "swiggy",
+    "channel": "swiggy",
+    "discount_type": "flat",
+    "discount_value": 150,
+    "min_spend": 700,
+    "max_discount": 150
+  }
+]

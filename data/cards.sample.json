@@ -1,0 +1,23 @@
+[
+  {
+    "card_id": "hdfc-diners-black",
+    "bank": "HDFC",
+    "network": "Diners",
+    "reward_rate": 0.033,
+    "monthly_reward_cap": 5000
+  },
+  {
+    "card_id": "sbi-cashback",
+    "bank": "SBI",
+    "network": "Visa",
+    "reward_rate": 0.05,
+    "monthly_reward_cap": 5000
+  },
+  {
+    "card_id": "axis-atlas",
+    "bank": "Axis",
+    "network": "Visa",
+    "reward_rate": 0.04,
+    "monthly_reward_cap": 7500
+  }
+]
