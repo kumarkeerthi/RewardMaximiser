@@ -59,6 +59,13 @@ Then open `http://localhost:8000` in Chrome.
 - **Expenses page**:
   - Record expense by card, merchant, amount, and category dropdown.
 
+
+## Azure VM hosting guide
+
+For full step-by-step deployment (VM creation, NSG ports, systemd, Nginx reverse proxy, optional HTTPS), follow:
+
+- [`AZURE_VM_SETUP.md`](AZURE_VM_SETUP.md)
+
 ## LLM setup
 
 ### Option 1: local Ollama (free)
