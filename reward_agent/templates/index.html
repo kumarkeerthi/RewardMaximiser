@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RewardMaximiser</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>RewardMaximiser</h1>
+    <nav>
+      <a class="active" href="/">Recommendations</a>
+      <a href="/expenses">Expenses</a>
+    </nav>
+  </header>
+
+  <main class="grid">
+    <section class="card">
+      <h2>Upload your credit card list</h2>
+      <form id="cardsUploadForm" enctype="multipart/form-data">
+        <input type="file" name="cards_file" accept=".json,.csv" required />
+        <button type="submit">Upload Cards</button>
+      </form>
+      <p id="uploadResult"></p>
+      <h3>Current cards</h3>
+      <ul id="cardsList"></ul>
+    </section>
+
+    <section class="card">
+      <h2>Get best card order</h2>
+      <form id="recommendationForm">
+        <label>Merchant <input type="text" name="merchant" placeholder="zomato" required /></label>
+        <label>Amount <input type="number" name="amount" step="0.01" min="1" required /></label>
+        <label>Channel
+          <select name="channel">
+            <option value="all">All</option>
+            <option value="zomato">Zomato</option>
+            <option value="swiggy">Swiggy</option>
+            <option value="offline">Offline POS</option>
+            <option value="online">Online</option>
+          </select>
+        </label>
+        <label class="inline"><input type="checkbox" name="split" /> Enable split payment strategy</label>
+        <button type="submit">Process Recommendation</button>
+      </form>
+      <div id="recommendationResult" class="results"></div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
