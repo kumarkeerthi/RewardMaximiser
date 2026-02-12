@@ -4,14 +4,14 @@ A local agent for credit-card offer tracking, expense tracking, social-offer sca
 
 ## What it does
 
-- Ingests your wallet (`cards.sample.json` format) and stores it in SQLite.
+- First-run onboarding asks for your wallet cards and stores the inventory in local SQLite.
 - Pulls offers from multiple sources (bank websites, social channels, and an OpenClaw adapter).
-- Refreshes all offers every 2 days using a daemon mode.
+- Runs a local daily intelligence scan (Reddit, TechnoFino, X mirrors, bank + reward sites) and stores snapshots.
 - Recommends the best card for an upcoming purchase.
 - Suggests split payment across cards to maximize total benefit.
 - Tracks expenses with merchant + category to keep monthly reward caps in check.
-- Web UI to upload card lists, record expenses, and process ordered card recommendations.
-- Scans community mentions from Reddit and TechnoFino for additional context.
+- Web UI to upload/add/remove cards on the fly, record expenses, discover cards mentioned online, and process recommendations.
+- Scans community mentions from Reddit, TechnoFino, and X.com mirrors for additional context.
 - Refines recommendation text with free-friendly LLM options:
   - Local Ollama (`OLLAMA_MODEL`, default `llama3.1:8b`)
   - Hugging Face Inference (`HF_API_KEY`, `HF_MODEL`)
@@ -52,10 +52,10 @@ Then open `http://localhost:8000` in Chrome.
 
 - **Recommendations page**:
   - Upload card list JSON/CSV.
-  - Enter merchant, amount, channel, and split-payment toggle.
+  - Enter merchant, amount, optional merchant website URL, channel, and split-payment toggle.
   - See ordered card suggestions with savings.
   - Get LLM-refined explanation.
-  - View Reddit + TechnoFino community links and mentions.
+  - View merchant-site scan hints plus community links and mentions.
 - **Expenses page**:
   - Record expense by card, merchant, amount, and category dropdown.
 
@@ -98,3 +98,12 @@ Implement `OpenClawProvider.fetch_offers()` in `reward_agent/providers.py` to:
 2. Crawl social media posts for limited-time campaign codes.
 3. Normalize each offer into the `Offer` dataclass.
 4. Return the normalized list so the refresh pipeline can persist it.
+
+
+### Local AI-driven flow
+
+- On first launch, the app checks if wallet cards exist and prompts setup in UI.
+- You can add/remove cards anytime without restarting the app.
+- A local research agent discovers card mentions from public bank card pages.
+- Daily background scan stores fresh community + bank/reward snippets in app state.
+- Recommendation API can optionally scan merchant website and include network/bank hints in reasoning.

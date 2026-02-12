@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import cgi
 import json
+import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from reward_agent.db import Database
-from reward_agent.intelligence import LLMRefiner, SocialScanner
+from reward_agent.intelligence import LLMRefiner, LocalResearchAgent, SocialScanner
 from reward_agent.models import CreditCard
 from reward_agent.recommender import Recommender, rec_to_dict
 
@@ -49,9 +50,20 @@ def _serve_file(path: Path) -> tuple[bytes, str]:
     return path.read_bytes(), content_type
 
 
+def _run_daily_sync(db_path: str, interval_hours: int = 24) -> None:
+    db = Database(db_path)
+    agent = LocalResearchAgent()
+    while True:
+        snapshot = agent.run_daily_scan()
+        db.set_state("daily_scan_snapshot", json.dumps(snapshot))
+        db.log_refresh("local-agent-daily", "ok", f"mentions={len(snapshot.get('bank_and_reward_mentions', []))}")
+        threading.Event().wait(interval_hours * 3600)
+
+
 def create_handler(db_path: str):
     db = Database(db_path)
     scanner = SocialScanner()
+    local_agent = LocalResearchAgent(scanner=scanner)
     refiner = LLMRefiner()
 
     class Handler(BaseHTTPRequestHandler):
@@ -88,9 +100,35 @@ def create_handler(db_path: str):
                 else:
                     self.send_error(HTTPStatus.NOT_FOUND)
                 return
+            if parsed.path == "/api/setup-status":
+                self._send_json({"needs_setup": not db.has_cards()})
+                return
             if parsed.path == "/api/cards":
                 cards = [dict(row) for row in db.fetch_cards()]
                 self._send_json({"cards": cards})
+                return
+            if parsed.path == "/api/cards/catalog":
+                cards = local_agent.discover_cards()
+                self._send_json({"cards": cards})
+                return
+            if parsed.path == "/api/daily-scan":
+                payload = db.get_state("daily_scan_snapshot", default="{}")
+                self._send_json({"snapshot": json.loads(payload)})
+                return
+            self.send_error(HTTPStatus.NOT_FOUND)
+
+        def do_DELETE(self):
+            parsed = urlparse(self.path)
+            if parsed.path.startswith("/api/cards/"):
+                card_id = parsed.path.replace("/api/cards/", "", 1).strip()
+                if not card_id:
+                    self._send_json({"error": "card_id missing"}, status=400)
+                    return
+                deleted = db.delete_card(card_id)
+                if not deleted:
+                    self._send_json({"error": "card not found"}, status=404)
+                    return
+                self._send_json({"ok": True})
                 return
             self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -105,6 +143,24 @@ def create_handler(db_path: str):
                 cards = _load_cards_payload(upload.filename or "cards.json", upload.file.read())
                 db.upsert_cards(cards)
                 self._send_json({"ok": True, "count": len(cards)})
+                return
+
+            if parsed.path == "/api/cards":
+                size = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(size).decode("utf-8"))
+                required = ["card_id", "bank", "network", "reward_rate", "monthly_reward_cap"]
+                if not all(key in payload for key in required):
+                    self._send_json({"error": "Missing required card fields"}, status=400)
+                    return
+                card = CreditCard(
+                    card_id=str(payload["card_id"]).strip(),
+                    bank=str(payload["bank"]).strip(),
+                    network=str(payload["network"]).strip(),
+                    reward_rate=float(payload["reward_rate"]),
+                    monthly_reward_cap=float(payload["monthly_reward_cap"]),
+                )
+                db.upsert_cards([card])
+                self._send_json({"ok": True, "card_id": card.card_id})
                 return
 
             if parsed.path == "/api/expenses":
@@ -131,15 +187,21 @@ def create_handler(db_path: str):
                 amount = float(payload.get("amount", 0))
                 channel = payload.get("channel", "all")
                 split = bool(payload.get("split", False))
+                merchant_url = payload.get("merchant_url", "")
 
                 cards = [dict(row) for row in db.fetch_cards()]
                 offers = [dict(row) for row in db.fetch_active_offers(merchant=merchant)]
                 monthly = db.monthly_spend_by_card()
                 rec = Recommender(cards=cards, offers=offers, monthly_spend=monthly)
-                ranked = rec.suggest_split(amount=amount, merchant=merchant, channel=channel) if split else rec.recommend(amount=amount, merchant=merchant, channel=channel)
+                ranked = (
+                    rec.suggest_split(amount=amount, merchant=merchant, channel=channel)
+                    if split
+                    else rec.recommend(amount=amount, merchant=merchant, channel=channel)
+                )
                 ranked_dict = rec_to_dict(ranked)
 
                 social = scanner.scan(merchant=merchant)
+                merchant_insights = local_agent.scan_merchant(merchant_url)
                 refined_text = refiner.refine(
                     {
                         "merchant": merchant,
@@ -148,6 +210,7 @@ def create_handler(db_path: str):
                         "split": split,
                         "recommendations": ranked_dict,
                         "community_insights": social.raw_items,
+                        "merchant_insights": merchant_insights,
                     }
                 )
                 self._send_json(
@@ -158,6 +221,7 @@ def create_handler(db_path: str):
                             "sources": social.sources,
                             "items": social.raw_items,
                         },
+                        "merchant_insights": merchant_insights,
                         "refined_response": refined_text,
                     }
                 )
@@ -171,6 +235,8 @@ def create_handler(db_path: str):
 
 
 def run_web_server(db_path: str = "rewardmaximiser.db", host: str = "0.0.0.0", port: int = 8000) -> None:
+    thread = threading.Thread(target=_run_daily_sync, args=(db_path,), daemon=True)
+    thread.start()
     server = ThreadingHTTPServer((host, port), create_handler(db_path))
     print(f"Web UI running on http://{host}:{port}")
     server.serve_forever()

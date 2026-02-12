@@ -16,15 +16,31 @@
   </header>
 
   <main class="grid">
+    <section class="card" id="onboardingBanner" style="display:none;">
+      <h2>First-time setup</h2>
+      <p>Select/upload your cards to initialize your local wallet inventory.</p>
+    </section>
+
     <section class="card">
-      <h2>Upload your credit card list</h2>
+      <h2>Your credit card inventory</h2>
       <form id="cardsUploadForm" enctype="multipart/form-data">
         <input type="file" name="cards_file" accept=".json,.csv" required />
         <button type="submit">Upload Cards</button>
       </form>
+      <h3>Add card manually</h3>
+      <form id="cardAddForm">
+        <label>Card ID <input type="text" name="card_id" required /></label>
+        <label>Bank <input type="text" name="bank" required /></label>
+        <label>Network <input type="text" name="network" required /></label>
+        <label>Reward rate <input type="number" name="reward_rate" step="0.0001" min="0" required /></label>
+        <label>Monthly cap <input type="number" name="monthly_reward_cap" step="0.01" min="0" required /></label>
+        <button type="submit">Add / Update Card</button>
+      </form>
       <p id="uploadResult"></p>
       <h3>Current cards</h3>
       <ul id="cardsList"></ul>
+      <button id="discoverCardsBtn" type="button">Discover cards mentioned online</button>
+      <ul id="catalogList"></ul>
     </section>
 
     <section class="card">
@@ -32,6 +48,7 @@
       <form id="recommendationForm">
         <label>Merchant <input type="text" name="merchant" placeholder="zomato" required /></label>
         <label>Amount <input type="number" name="amount" step="0.01" min="1" required /></label>
+        <label>Merchant website (optional) <input type="url" name="merchant_url" placeholder="https://merchant.example" /></label>
         <label>Channel
           <select name="channel">
             <option value="all">All</option>
@@ -45,6 +62,12 @@
         <button type="submit">Process Recommendation</button>
       </form>
       <div id="recommendationResult" class="results"></div>
+    </section>
+
+    <section class="card">
+      <h2>Daily local agent scan</h2>
+      <button id="loadDailyScanBtn" type="button">Load latest scan</button>
+      <div id="dailyScanResult"></div>
     </section>
   </main>
 
