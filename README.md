@@ -60,6 +60,20 @@ Then open `http://localhost:8000` in Chrome.
   - Record expense by card, merchant, amount, and category dropdown.
 
 
+## One-command deployment
+
+Run everything (venv setup, dependency install, initial data sync/refresh, and web app startup):
+
+```bash
+./deploy.sh
+```
+
+Optional environment overrides:
+
+- `VENV_DIR`, `DB_PATH`, `HOST`, `PORT`
+- `CARDS_FILE`, `BANK_OFFERS_FILE`, `SOCIAL_OFFERS_FILE`
+- `OLLAMA_MODEL`, `HF_API_KEY`, `HF_MODEL`
+
 ## Azure VM hosting guide
 
 For full step-by-step deployment (VM creation, NSG ports, systemd, Nginx reverse proxy, optional HTTPS), follow:
