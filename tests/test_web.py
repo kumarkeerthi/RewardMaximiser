@@ -81,6 +81,9 @@ def test_upload_cards_and_recommend(tmp_path):
     result = json.loads(urlopen(req).read().decode("utf-8"))
     assert result["recommendations"][0]["card_id"] == "hdfc-millennia"
     assert "refined_response" in result
+    assert "merchant_insights" in result
+    setup = json.loads(urlopen(f"{base}/api/setup-status").read().decode("utf-8"))
+    assert setup["needs_setup"] is False
     server.shutdown()
 
 
@@ -106,4 +109,36 @@ def test_expense_route_accepts_category(tmp_path):
     opener = urlopen(req)
     assert opener.status == 200
     assert db.monthly_spend_by_card()["icici-amazon"] == 450.0
+    server.shutdown()
+
+
+def test_add_and_remove_card_api(tmp_path):
+    db_path = tmp_path / "test-cards.db"
+    server = _start_server(str(db_path))
+    base = f"http://127.0.0.1:{server.server_port}"
+
+    req = Request(
+        f"{base}/api/cards",
+        data=json.dumps({
+            "card_id": "axis-ace",
+            "bank": "Axis",
+            "network": "Visa",
+            "reward_rate": 0.02,
+            "monthly_reward_cap": 500,
+        }).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    added = json.loads(urlopen(req).read().decode("utf-8"))
+    assert added["ok"] is True
+
+    cards = json.loads(urlopen(f"{base}/api/cards").read().decode("utf-8"))["cards"]
+    assert len(cards) == 1
+
+    delete_req = Request(f"{base}/api/cards/axis-ace", method="DELETE")
+    removed = json.loads(urlopen(delete_req).read().decode("utf-8"))
+    assert removed["ok"] is True
+
+    setup = json.loads(urlopen(f"{base}/api/setup-status").read().decode("utf-8"))
+    assert setup["needs_setup"] is True
     server.shutdown()

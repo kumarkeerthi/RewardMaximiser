@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from html import unescape
 from typing import Any
 from urllib.error import URLError
 from urllib.parse import urlencode
@@ -37,6 +39,11 @@ class SocialScanner:
         if technofino_items:
             items.extend(technofino_items)
             sources.append({"name": "TechnoFino", "url": "https://www.technofino.in/community/"})
+
+        x_items = self._scan_x(merchant_query)
+        if x_items:
+            items.extend(x_items)
+            sources.append({"name": "X.com", "url": f"https://x.com/search?q={merchant_query}"})
 
         summary = (
             f"Collected {len(items)} community mentions for '{merchant_query}' at "
@@ -111,6 +118,164 @@ class SocialScanner:
             )
         return results
 
+    def _scan_x(self, query: str) -> list[dict[str, str]]:
+        # Public search HTML frequently blocks scraping; use Nitter RSS mirror as a best-effort source.
+        params = urlencode({"f": "tweets", "q": f"{query} credit card offer"})
+        url = f"https://nitter.net/search/rss?{params}"
+        req = Request(url, headers={"User-Agent": "RewardMaximiser/1.0"})
+        try:
+            with urlopen(req, timeout=self.timeout_s) as response:
+                text = response.read().decode("utf-8", errors="ignore")
+        except (URLError, UnicodeDecodeError, TimeoutError):
+            return []
+
+        items = text.split("<item>")
+        results: list[dict[str, str]] = []
+        for item in items[1:6]:
+            title_match = re.search(r"<title>(.*?)</title>", item, flags=re.DOTALL)
+            link_match = re.search(r"<link>(.*?)</link>", item, flags=re.DOTALL)
+            desc_match = re.search(r"<description>(.*?)</description>", item, flags=re.DOTALL)
+            if not title_match or not link_match:
+                continue
+            results.append(
+                {
+                    "source": "x",
+                    "title": unescape(title_match.group(1).strip()),
+                    "snippet": unescape((desc_match.group(1).strip() if desc_match else ""))[:220],
+                    "url": link_match.group(1).strip(),
+                }
+            )
+        return results
+
+
+class LocalResearchAgent:
+    """Best-effort local web intelligence layer for cards, offers, and merchant context."""
+
+    CARD_DIRECTORY_SOURCES = [
+        "https://www.hdfcbank.com/personal/pay/cards",
+        "https://www.sbicard.com/en/personal/credit-cards.page",
+        "https://www.icicibank.com/personal-banking/cards/credit-card",
+        "https://www.axisbank.com/retail/cards/credit-card",
+    ]
+
+    BANK_OFFER_SOURCES = [
+        "https://www.hdfcbank.com/personal/pay/cards/credit-cards/offers",
+        "https://www.sbicard.com/en/offers.page",
+        "https://www.icicibank.com/personal-banking/offers",
+        "https://www.axisbank.com/retail/cards/credit-card/offers-and-benefits",
+    ]
+
+    def __init__(self, scanner: SocialScanner | None = None, timeout_s: float = 10.0) -> None:
+        self.timeout_s = timeout_s
+        self.scanner = scanner or SocialScanner(timeout_s=timeout_s)
+
+    def discover_cards(self) -> list[dict[str, str]]:
+        discovered: list[dict[str, str]] = []
+        seen = set()
+        for url in self.CARD_DIRECTORY_SOURCES:
+            html = self._fetch_text(url)
+            if not html:
+                continue
+            for name in self._extract_card_names(html):
+                key = name.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                discovered.append({"name": name, "source": url})
+            if len(discovered) >= 40:
+                break
+        return discovered
+
+    def run_daily_scan(self) -> dict[str, Any]:
+        community = self.scanner.scan("credit card rewards")
+        bank_offers: list[dict[str, str]] = []
+        for url in self.BANK_OFFER_SOURCES:
+            html = self._fetch_text(url)
+            if not html:
+                continue
+            snippets = self._extract_offer_snippets(html)
+            bank_offers.extend({"source": url, "snippet": text} for text in snippets)
+
+        reward_sites = self._scan_reward_sites()
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "community": {
+                "summary": community.summary,
+                "sources": community.sources,
+                "items": community.raw_items,
+            },
+            "bank_and_reward_mentions": bank_offers + reward_sites,
+        }
+
+    def scan_merchant(self, merchant_url: str) -> dict[str, Any]:
+        if not merchant_url:
+            return {"url": "", "title": "", "hints": []}
+        html = self._fetch_text(merchant_url)
+        if not html:
+            return {"url": merchant_url, "title": "", "hints": []}
+
+        title_match = re.search(r"<title>(.*?)</title>", html, flags=re.IGNORECASE | re.DOTALL)
+        title = unescape(title_match.group(1)).strip() if title_match else ""
+        text = unescape(re.sub(r"<[^>]+>", " ", html.lower()))
+        hints = []
+        for token in ["visa", "mastercard", "amex", "rupay", "hdfc", "icici", "axis", "sbi"]:
+            if token in text:
+                hints.append(token)
+        return {"url": merchant_url, "title": title, "hints": sorted(set(hints))}
+
+    def _scan_reward_sites(self) -> list[dict[str, str]]:
+        reward_sources = [
+            "https://www.cardexpert.in/category/credit-cards/",
+            "https://offers.smartbuy.hdfcbank.com/",
+        ]
+        collected: list[dict[str, str]] = []
+        for url in reward_sources:
+            html = self._fetch_text(url)
+            if not html:
+                continue
+            for snippet in self._extract_offer_snippets(html)[:5]:
+                collected.append({"source": url, "snippet": snippet})
+        return collected
+
+    def _fetch_text(self, url: str) -> str:
+        req = Request(url, headers={"User-Agent": "RewardMaximiser/1.0"})
+        try:
+            with urlopen(req, timeout=self.timeout_s) as response:
+                return response.read().decode("utf-8", errors="ignore")
+        except (URLError, TimeoutError, ValueError):
+            return ""
+
+    def _extract_card_names(self, html: str) -> list[str]:
+        text = unescape(re.sub(r"<[^>]+>", " ", html))
+        pattern = re.compile(r"([A-Z][A-Za-z0-9&\-\s]{2,60}(?:Card|CARD))")
+        names = []
+        seen = set()
+        for match in pattern.findall(text):
+            normalized = " ".join(match.split())
+            if len(normalized) < 6:
+                continue
+            key = normalized.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            names.append(normalized)
+            if len(names) >= 25:
+                break
+        return names
+
+    def _extract_offer_snippets(self, html: str) -> list[str]:
+        text = unescape(re.sub(r"<[^>]+>", " ", html))
+        text = " ".join(text.split())
+        chunks = re.split(r"(?<=[.!?])\s+", text)
+        snippets = []
+        for chunk in chunks:
+            lower = chunk.lower()
+            if any(k in lower for k in ["offer", "cashback", "reward", "points", "discount"]):
+                snippets.append(chunk[:220])
+            if len(snippets) >= 10:
+                break
+        return snippets
+
 
 class LLMRefiner:
     """Uses low-cost/free options when configured; otherwise falls back locally."""
@@ -133,8 +298,8 @@ class LLMRefiner:
 
     def _build_prompt(self, context: dict[str, Any]) -> str:
         return (
-            "You are a rewards optimization assistant. Summarize recommendations in bullet points "
-            "with clear ordered card usage, caveats, and action items.\n"
+            "You are a local-first rewards optimization assistant. Summarize recommendations in bullet points "
+            "with ordered card usage, caveats, and action items. Prefer local signals first.\n"
             f"Context: {json.dumps(context, ensure_ascii=False)}"
         )
 
@@ -180,6 +345,9 @@ class LLMRefiner:
             top_lines.append(
                 f"{idx}. Use {card['card_id']} first (~₹{card['savings']:.2f} savings, reason: {card['reason']})."
             )
+        merchant = context.get("merchant_insights", {})
+        if merchant.get("hints"):
+            top_lines.append(f"Merchant site hints seen: {', '.join(merchant['hints'])}.")
         notes = [
             "No external LLM configured/reachable, so this is a local deterministic summary.",
             "Set OLLAMA_MODEL with a running local Ollama server or HF_API_KEY for Hugging Face Inference.",

@@ -67,6 +67,12 @@ class Database:
                     status TEXT NOT NULL,
                     detail TEXT
                 );
+
+                CREATE TABLE IF NOT EXISTS app_state (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
                 """
             )
 
@@ -153,6 +159,32 @@ class Database:
     def fetch_cards(self) -> list[sqlite3.Row]:
         with self.connect() as conn:
             return conn.execute("SELECT * FROM cards").fetchall()
+
+    def delete_card(self, card_id: str) -> bool:
+        with self.connect() as conn:
+            result = conn.execute("DELETE FROM cards WHERE card_id = ?", (card_id,))
+        return result.rowcount > 0
+
+    def has_cards(self) -> bool:
+        with self.connect() as conn:
+            row = conn.execute("SELECT COUNT(*) AS count FROM cards").fetchone()
+        return bool(row and row["count"] > 0)
+
+    def set_state(self, key: str, value: str) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO app_state(key, value, updated_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=CURRENT_TIMESTAMP
+                """,
+                (key, value),
+            )
+
+    def get_state(self, key: str, default: str = "") -> str:
+        with self.connect() as conn:
+            row = conn.execute("SELECT value FROM app_state WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else default
 
     def fetch_active_offers(self, merchant: str | None = None) -> list[sqlite3.Row]:
         query = "SELECT * FROM offers WHERE active = 1"
