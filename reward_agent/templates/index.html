@@ -34,6 +34,12 @@
         <label>Network <input type="text" name="network" required /></label>
         <label>Reward rate <input type="number" name="reward_rate" step="0.0001" min="0" required /></label>
         <label>Monthly cap <input type="number" name="monthly_reward_cap" step="0.01" min="0" required /></label>
+        <label>Annual fee <input type="number" name="annual_fee" step="0.01" min="0" value="0" /></label>
+        <label>Milestone spend <input type="number" name="milestone_spend" step="0.01" min="0" value="0" /></label>
+        <label>Milestone bonus <input type="number" name="milestone_bonus" step="0.01" min="0" value="0" /></label>
+        <label>Category multipliers JSON <input type="text" name="category_multipliers" placeholder='{"dining":0.1,"travel":0.06}' /></label>
+        <label>Channel multipliers JSON <input type="text" name="channel_multipliers" placeholder='{"online":0.05,"offline":0.02}' /></label>
+        <label>Merchant multipliers JSON <input type="text" name="merchant_multipliers" placeholder='{"zomato":0.12}' /></label>
         <button type="submit">Add / Update Card</button>
       </form>
       <p id="uploadResult"></p>
@@ -48,6 +54,7 @@
       <form id="recommendationForm">
         <label>Merchant <input type="text" name="merchant" placeholder="zomato" required /></label>
         <label>Amount <input type="number" name="amount" step="0.01" min="1" required /></label>
+        <label>Category <input type="text" name="category" placeholder="dining / grocery / travel" /></label>
         <label>Merchant website (optional) <input type="url" name="merchant_url" placeholder="https://merchant.example" /></label>
         <label>Channel
           <select name="channel">

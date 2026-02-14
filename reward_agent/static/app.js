@@ -7,6 +7,16 @@ async function fetchCards() {
   return data.cards || [];
 }
 
+function parseJsonMap(raw) {
+  if (!raw) return {};
+  try {
+    const payload = JSON.parse(String(raw));
+    return (payload && typeof payload === 'object' && !Array.isArray(payload)) ? payload : {};
+  } catch (_) {
+    return {};
+  }
+}
+
 async function fetchSetupStatus() {
   const response = await fetch('/api/setup-status');
   if (!response.ok) {
@@ -20,7 +30,13 @@ async function hydrateCards() {
   const cardsList = document.getElementById('cardsList');
   if (cardsList) {
     cardsList.innerHTML = cards.length
-      ? cards.map((card) => `<li>${card.card_id} · ${card.bank} · ${card.network} · reward rate ${card.reward_rate} <button data-card-id="${card.card_id}" class="delete-card-btn">Remove</button></li>`).join('')
+      ? cards.map((card) => {
+        const category = parseJsonMap(card.category_multipliers);
+        const channel = parseJsonMap(card.channel_multipliers);
+        const merchant = parseJsonMap(card.merchant_multipliers);
+        return `<li>${card.card_id} · ${card.bank} · ${card.network} · base ${card.reward_rate} · fee ₹${card.annual_fee || 0} · milestone ₹${card.milestone_spend || 0}/₹${card.milestone_bonus || 0}`
+          + `<br/><small>category=${JSON.stringify(category)} channel=${JSON.stringify(channel)} merchant=${JSON.stringify(merchant)}</small> <button data-card-id="${card.card_id}" class="delete-card-btn">Remove</button></li>`;
+      }).join('')
       : '<li>No cards loaded yet.</li>';
 
     cardsList.querySelectorAll('.delete-card-btn').forEach((button) => {
@@ -79,6 +95,12 @@ if (addForm) {
       network: formData.get('network'),
       reward_rate: Number(formData.get('reward_rate')),
       monthly_reward_cap: Number(formData.get('monthly_reward_cap')),
+      annual_fee: Number(formData.get('annual_fee') || 0),
+      milestone_spend: Number(formData.get('milestone_spend') || 0),
+      milestone_bonus: Number(formData.get('milestone_bonus') || 0),
+      category_multipliers: parseJsonMap(formData.get('category_multipliers')),
+      channel_multipliers: parseJsonMap(formData.get('channel_multipliers')),
+      merchant_multipliers: parseJsonMap(formData.get('merchant_multipliers')),
     };
     const response = await fetch('/api/cards', {
       method: 'POST',
@@ -126,6 +148,7 @@ if (recommendationForm) {
     const payload = {
       merchant: formData.get('merchant'),
       amount: Number(formData.get('amount')),
+      category: formData.get('category') || 'other',
       merchant_url: formData.get('merchant_url'),
       channel: formData.get('channel'),
       split: formData.get('split') === 'on',

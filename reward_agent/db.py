@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -32,7 +33,13 @@ class Database:
                     bank TEXT NOT NULL,
                     network TEXT NOT NULL,
                     reward_rate REAL NOT NULL,
-                    monthly_reward_cap REAL NOT NULL
+                    monthly_reward_cap REAL NOT NULL,
+                    category_multipliers TEXT NOT NULL DEFAULT '{}',
+                    channel_multipliers TEXT NOT NULL DEFAULT '{}',
+                    merchant_multipliers TEXT NOT NULL DEFAULT '{}',
+                    annual_fee REAL NOT NULL DEFAULT 0,
+                    milestone_spend REAL NOT NULL DEFAULT 0,
+                    milestone_bonus REAL NOT NULL DEFAULT 0
                 );
 
                 CREATE TABLE IF NOT EXISTS offers (
@@ -75,20 +82,56 @@ class Database:
                 );
                 """
             )
+            self._ensure_column(conn, "cards", "category_multipliers", "TEXT NOT NULL DEFAULT '{}' ")
+            self._ensure_column(conn, "cards", "channel_multipliers", "TEXT NOT NULL DEFAULT '{}' ")
+            self._ensure_column(conn, "cards", "merchant_multipliers", "TEXT NOT NULL DEFAULT '{}' ")
+            self._ensure_column(conn, "cards", "annual_fee", "REAL NOT NULL DEFAULT 0")
+            self._ensure_column(conn, "cards", "milestone_spend", "REAL NOT NULL DEFAULT 0")
+            self._ensure_column(conn, "cards", "milestone_bonus", "REAL NOT NULL DEFAULT 0")
+
+    def _ensure_column(self, conn: sqlite3.Connection, table: str, column: str, col_type_sql: str) -> None:
+        columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if column not in columns:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type_sql}")
 
     def upsert_cards(self, cards: Iterable[CreditCard]) -> None:
         with self.connect() as conn:
             conn.executemany(
                 """
-                INSERT INTO cards(card_id, bank, network, reward_rate, monthly_reward_cap)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO cards(
+                    card_id, bank, network, reward_rate, monthly_reward_cap,
+                    category_multipliers, channel_multipliers, merchant_multipliers,
+                    annual_fee, milestone_spend, milestone_bonus
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(card_id) DO UPDATE SET
                     bank=excluded.bank,
                     network=excluded.network,
                     reward_rate=excluded.reward_rate,
-                    monthly_reward_cap=excluded.monthly_reward_cap
+                    monthly_reward_cap=excluded.monthly_reward_cap,
+                    category_multipliers=excluded.category_multipliers,
+                    channel_multipliers=excluded.channel_multipliers,
+                    merchant_multipliers=excluded.merchant_multipliers,
+                    annual_fee=excluded.annual_fee,
+                    milestone_spend=excluded.milestone_spend,
+                    milestone_bonus=excluded.milestone_bonus
                 """,
-                [(c.card_id, c.bank, c.network, c.reward_rate, c.monthly_reward_cap) for c in cards],
+                [
+                    (
+                        c.card_id,
+                        c.bank,
+                        c.network,
+                        c.reward_rate,
+                        c.monthly_reward_cap,
+                        json.dumps(c.category_multipliers or {}),
+                        json.dumps(c.channel_multipliers or {}),
+                        json.dumps(c.merchant_multipliers or {}),
+                        c.annual_fee,
+                        c.milestone_spend,
+                        c.milestone_bonus,
+                    )
+                    for c in cards
+                ],
             )
 
     def replace_offers(self, offers: Iterable[Offer], source: str) -> None:

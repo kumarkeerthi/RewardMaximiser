@@ -125,6 +125,12 @@ def test_add_and_remove_card_api(tmp_path):
             "network": "Visa",
             "reward_rate": 0.02,
             "monthly_reward_cap": 500,
+            "category_multipliers": {"dining": 0.05},
+            "channel_multipliers": {"online": 0.03},
+            "merchant_multipliers": {"zomato": 0.08},
+            "annual_fee": 499,
+            "milestone_spend": 10000,
+            "milestone_bonus": 500,
         }).encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",
@@ -134,6 +140,7 @@ def test_add_and_remove_card_api(tmp_path):
 
     cards = json.loads(urlopen(f"{base}/api/cards").read().decode("utf-8"))["cards"]
     assert len(cards) == 1
+    assert "dining" in cards[0]["category_multipliers"]
 
     delete_req = Request(f"{base}/api/cards/axis-ace", method="DELETE")
     removed = json.loads(urlopen(delete_req).read().decode("utf-8"))
