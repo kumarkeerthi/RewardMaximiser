@@ -142,3 +142,39 @@ def test_add_and_remove_card_api(tmp_path):
     setup = json.loads(urlopen(f"{base}/api/setup-status").read().decode("utf-8"))
     assert setup["needs_setup"] is True
     server.shutdown()
+
+
+def test_lifestyle_report_on_demand(tmp_path):
+    db_path = tmp_path / "test-lifestyle.db"
+    db = Database(str(db_path))
+    db.upsert_cards(
+        [
+            CreditCard(
+                card_id="hdfc-millennia",
+                bank="HDFC",
+                network="Visa",
+                reward_rate=0.05,
+                monthly_reward_cap=1200,
+            )
+        ]
+    )
+    db.add_expense(card_id="hdfc-millennia", merchant="swiggy", amount=900, category="dining")
+    db.add_expense(card_id="hdfc-millennia", merchant="amazon", amount=1500, category="shopping")
+
+    server = _start_server(str(db_path))
+    base = f"http://127.0.0.1:{server.server_port}"
+
+    req = Request(
+        f"{base}/api/lifestyle-report/run",
+        data=json.dumps({"selected_card": "hdfc millennia card"}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    result = json.loads(urlopen(req).read().decode("utf-8"))["report"]
+    assert "expense_pattern" in result
+    assert "recommended_card" in result
+    assert "selected_card_guide" in result
+
+    snapshot = json.loads(urlopen(f"{base}/api/lifestyle-report").read().decode("utf-8"))["report"]
+    assert snapshot.get("expense_pattern", {}).get("total_spend", 0) >= 2400
+    server.shutdown()

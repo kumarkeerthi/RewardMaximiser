@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from reward_agent.db import Database
-from reward_agent.intelligence import LLMRefiner, LocalResearchAgent, SocialScanner
+from reward_agent.intelligence import IndianCardLifestyleAgent, LLMRefiner, LocalResearchAgent, SocialScanner
 from reward_agent.models import CreditCard
 from reward_agent.recommender import Recommender, rec_to_dict
 
@@ -60,11 +60,25 @@ def _run_daily_sync(db_path: str, interval_hours: int = 24) -> None:
         threading.Event().wait(interval_hours * 3600)
 
 
+def _run_weekly_lifestyle_scan(db_path: str, interval_hours: int = 24 * 7) -> None:
+    db = Database(db_path)
+    scanner = SocialScanner()
+    local_agent = LocalResearchAgent(scanner=scanner)
+    lifestyle_agent = IndianCardLifestyleAgent(local_agent=local_agent, scanner=scanner)
+    while True:
+        expenses = [dict(row) for row in db.fetch_expenses(limit=1000)]
+        report = lifestyle_agent.build_weekly_report(expenses=expenses)
+        db.set_state("weekly_lifestyle_report", json.dumps(report))
+        db.log_refresh("indian-card-lifestyle-weekly", "ok", f"candidates={len(report.get('candidates', []))}")
+        threading.Event().wait(interval_hours * 3600)
+
+
 def create_handler(db_path: str):
     db = Database(db_path)
     scanner = SocialScanner()
     local_agent = LocalResearchAgent(scanner=scanner)
     refiner = LLMRefiner()
+    lifestyle_agent = IndianCardLifestyleAgent(local_agent=local_agent, scanner=scanner)
 
     class Handler(BaseHTTPRequestHandler):
         def _send_json(self, payload: dict, status: int = 200) -> None:
@@ -114,6 +128,10 @@ def create_handler(db_path: str):
             if parsed.path == "/api/daily-scan":
                 payload = db.get_state("daily_scan_snapshot", default="{}")
                 self._send_json({"snapshot": json.loads(payload)})
+                return
+            if parsed.path == "/api/lifestyle-report":
+                payload = db.get_state("weekly_lifestyle_report", default="{}")
+                self._send_json({"report": json.loads(payload)})
                 return
             self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -180,6 +198,16 @@ def create_handler(db_path: str):
                 self.end_headers()
                 return
 
+            if parsed.path == "/api/lifestyle-report/run":
+                size = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(size).decode("utf-8")) if size else {}
+                selected_card = str(payload.get("selected_card", "")).strip()
+                expenses = [dict(row) for row in db.fetch_expenses(limit=1000)]
+                report = lifestyle_agent.build_weekly_report(expenses=expenses, selected_card=selected_card)
+                db.set_state("weekly_lifestyle_report", json.dumps(report))
+                self._send_json({"report": report})
+                return
+
             if parsed.path == "/api/recommend":
                 size = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(size).decode("utf-8"))
@@ -237,6 +265,8 @@ def create_handler(db_path: str):
 def run_web_server(db_path: str = "rewardmaximiser.db", host: str = "0.0.0.0", port: int = 8000) -> None:
     thread = threading.Thread(target=_run_daily_sync, args=(db_path,), daemon=True)
     thread.start()
+    weekly_thread = threading.Thread(target=_run_weekly_lifestyle_scan, args=(db_path,), daemon=True)
+    weekly_thread.start()
     server = ThreadingHTTPServer((host, port), create_handler(db_path))
     print(f"Web UI running on http://{host}:{port}")
     server.serve_forever()

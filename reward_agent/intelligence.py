@@ -353,3 +353,165 @@ class LLMRefiner:
             "Set OLLAMA_MODEL with a running local Ollama server or HF_API_KEY for Hugging Face Inference.",
         ]
         return "\n".join(top_lines + [""] + notes)
+
+
+class IndianCardLifestyleAgent:
+    """Weekly/on-demand lifestyle analysis for Indian credit card choices."""
+
+    FEATURE_TOKENS = {
+        "cashback": ["cashback", "cash back"],
+        "travel": ["travel", "air miles", "airmile", "flight"],
+        "lounge": ["lounge", "airport"],
+        "dining": ["dining", "restaurant", "swiggy", "zomato"],
+        "fuel": ["fuel", "petrol", "diesel"],
+        "shopping": ["shopping", "ecommerce", "amazon", "flipkart"],
+        "lifestyle": ["lifestyle", "movie", "entertainment"],
+    }
+
+    POSITIVE_TOKENS = ["good", "great", "best", "worth", "useful", "easy", "love", "benefit"]
+    NEGATIVE_TOKENS = ["bad", "poor", "worst", "delay", "issue", "devalue", "hidden", "fee"]
+
+    def __init__(self, local_agent: LocalResearchAgent, scanner: SocialScanner) -> None:
+        self.local_agent = local_agent
+        self.scanner = scanner
+
+    def build_weekly_report(self, expenses: list[dict[str, Any]], selected_card: str = "") -> dict[str, Any]:
+        pattern = self._expense_pattern(expenses)
+        discovered = self.local_agent.discover_cards()
+        if not discovered:
+            return {
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "expense_pattern": pattern,
+                "candidates": [],
+                "recommended_card": {},
+                "selected_card_guide": self._usage_guide({}, pattern),
+            }
+
+        daily_snapshot = self.local_agent.run_daily_scan()
+        candidates: list[dict[str, Any]] = []
+        for item in discovered[:20]:
+            name = item.get("name", "").strip()
+            if not name:
+                continue
+            features = self._infer_features(name=name, source=item.get("source", ""), daily_snapshot=daily_snapshot)
+            reviews = self.scanner.scan(name)
+            candidates.append(self._candidate_analysis(name=name, source=item.get("source", ""), features=features, reviews=reviews, pattern=pattern))
+
+        candidates.sort(key=lambda row: row.get("fit_score", 0.0), reverse=True)
+        recommendation = candidates[0] if candidates else {}
+        selected = self._resolve_selected(selected_card, candidates)
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "expense_pattern": pattern,
+            "candidates": candidates[:5],
+            "recommended_card": recommendation,
+            "selected_card_guide": self._usage_guide(selected, pattern),
+        }
+
+    def _expense_pattern(self, expenses: list[dict[str, Any]]) -> dict[str, Any]:
+        if not expenses:
+            return {"total_spend": 0.0, "avg_ticket": 0.0, "top_categories": [], "top_merchants": []}
+        total = sum(float(row.get("amount", 0.0)) for row in expenses)
+        avg = total / max(len(expenses), 1)
+        by_category: dict[str, float] = {}
+        by_merchant: dict[str, float] = {}
+        for row in expenses:
+            category = (row.get("category") or "other").strip().lower()
+            merchant = (row.get("merchant") or "unknown").strip().lower()
+            amount = float(row.get("amount", 0.0))
+            by_category[category] = by_category.get(category, 0.0) + amount
+            by_merchant[merchant] = by_merchant.get(merchant, 0.0) + amount
+        top_categories = sorted(by_category.items(), key=lambda x: x[1], reverse=True)[:3]
+        top_merchants = sorted(by_merchant.items(), key=lambda x: x[1], reverse=True)[:3]
+        return {
+            "total_spend": round(total, 2),
+            "avg_ticket": round(avg, 2),
+            "top_categories": [{"name": key, "amount": round(value, 2)} for key, value in top_categories],
+            "top_merchants": [{"name": key, "amount": round(value, 2)} for key, value in top_merchants],
+        }
+
+    def _infer_features(self, name: str, source: str, daily_snapshot: dict[str, Any]) -> list[str]:
+        text = f"{name} {source}"
+        for row in daily_snapshot.get("bank_and_reward_mentions", []):
+            snippet = str(row.get("snippet", ""))
+            if name.lower().split()[0] in snippet.lower():
+                text += f" {snippet}"
+        lowered = text.lower()
+        features: list[str] = []
+        for feature, variants in self.FEATURE_TOKENS.items():
+            if any(token in lowered for token in variants):
+                features.append(feature)
+        return sorted(set(features))
+
+    def _candidate_analysis(self, name: str, source: str, features: list[str], reviews: InsightResult, pattern: dict[str, Any]) -> dict[str, Any]:
+        review_text = " ".join(f"{item.get('title', '')} {item.get('snippet', '')}" for item in reviews.raw_items).lower()
+        pos = sum(review_text.count(token) for token in self.POSITIVE_TOKENS)
+        neg = sum(review_text.count(token) for token in self.NEGATIVE_TOKENS)
+        sentiment = pos - neg
+
+        top_categories = [row["name"] for row in pattern.get("top_categories", [])]
+        fit_score = float(sentiment)
+        if "dining" in features and any(cat in {"dining", "food"} for cat in top_categories):
+            fit_score += 3
+        if "travel" in features and any(cat in {"travel", "transport"} for cat in top_categories):
+            fit_score += 3
+        if "shopping" in features and any(cat in {"shopping", "grocery"} for cat in top_categories):
+            fit_score += 2
+        if "cashback" in features:
+            fit_score += 1
+
+        annual_fee = 4999.0 if "travel" in features and "lounge" in features else (999.0 if "lounge" in features else 500.0)
+        expected_extra = annual_fee / 12.0
+
+        pros = []
+        cons = []
+        if "cashback" in features:
+            pros.append("Strong cashback-driven value for regular spend")
+        if "dining" in features:
+            pros.append("Dining/food-order relevance aligns with lifestyle spend")
+        if "travel" in features or "lounge" in features:
+            pros.append("Travel-related upside through miles/lounge style benefits")
+        if not pros:
+            pros.append("General-purpose benefits from mainstream issuer category")
+
+        if neg > pos:
+            cons.append("Community sentiment shows more complaints than praise")
+        cons.append(f"Potential monthly cost impact around ₹{expected_extra:.0f} from annual fee")
+
+        return {
+            "card_name": name,
+            "source": source,
+            "features": features,
+            "reviews": {
+                "summary": reviews.summary,
+                "sources": reviews.sources,
+                "sample_size": len(reviews.raw_items),
+            },
+            "pros": pros,
+            "cons": cons,
+            "fit_score": round(fit_score, 2),
+            "estimated_monthly_extra_expense": round(expected_extra, 2),
+            "estimated_annual_fee": annual_fee,
+        }
+
+    def _resolve_selected(self, selected_card: str, candidates: list[dict[str, Any]]) -> dict[str, Any]:
+        if not selected_card:
+            return candidates[0] if candidates else {}
+        target = selected_card.strip().lower()
+        for row in candidates:
+            if row.get("card_name", "").lower() == target:
+                return row
+        return candidates[0] if candidates else {}
+
+    def _usage_guide(self, selected: dict[str, Any], pattern: dict[str, Any]) -> list[str]:
+        if not selected:
+            return ["No selected card available yet. Run weekly scan after adding expense entries."]
+        tips = [
+            f"Use {selected.get('card_name', 'this card')} for categories where it has strong features: {', '.join(selected.get('features', []) or ['general spend'])}.",
+            "Autopay total due to avoid finance charges that wipe out reward gains.",
+            "Track monthly statement and reward caps; shift overflow spend to your backup card.",
+        ]
+        top_categories = pattern.get("top_categories", [])
+        if top_categories:
+            tips.append(f"Prioritize this card for your top category '{top_categories[0]['name']}' first, then use other cards for non-bonus categories.")
+        return tips
