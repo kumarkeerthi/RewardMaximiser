@@ -7,6 +7,7 @@ A local agent for credit-card offer tracking, expense tracking, social-offer sca
 - First-run onboarding asks for your wallet cards and stores the inventory in local SQLite.
 - Pulls offers from multiple sources (bank websites, social channels, and an OpenClaw adapter).
 - Runs a local daily intelligence scan (Reddit, TechnoFino, X mirrors, bank + reward sites) and stores snapshots.
+- Runs a weekly Indian credit-card lifestyle agent that analyzes your expenses, scans card features/reviews, and recommends the best-fit next card with pros/cons and likely extra costs.
 - Recommends the best card for an upcoming purchase.
 - Suggests split payment across cards to maximize total benefit.
 - Tracks expenses with merchant + category to keep monthly reward caps in check.
@@ -121,3 +122,14 @@ Implement `OpenClawProvider.fetch_offers()` in `reward_agent/providers.py` to:
 - A local research agent discovers card mentions from public bank card pages.
 - Daily background scan stores fresh community + bank/reward snippets in app state.
 - Recommendation API can optionally scan merchant website and include network/bank hints in reasoning.
+
+### Lifestyle recommendation agent (weekly + on-demand)
+
+- Background task stores a weekly report in app state.
+- On-demand API run: `POST /api/lifestyle-report/run` with optional JSON `{ "selected_card": "<card name>" }`.
+- Fetch latest report: `GET /api/lifestyle-report`.
+- Report includes:
+  - Expense patterns from recorded transactions.
+  - Recommended Indian card candidates based on inferred features + social review scan.
+  - Pros/cons and estimated additional monthly expense (annual fee impact).
+  - Usage guide for your selected card (or top recommendation).

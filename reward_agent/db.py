@@ -156,6 +156,18 @@ class Database:
             ).fetchall()
         return {row["card_id"]: float(row["total"]) for row in rows}
 
+    def fetch_expenses(self, limit: int = 500) -> list[sqlite3.Row]:
+        with self.connect() as conn:
+            return conn.execute(
+                """
+                SELECT id, card_id, merchant, amount, category, spent_at
+                FROM expenses
+                ORDER BY spent_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+
     def fetch_cards(self) -> list[sqlite3.Row]:
         with self.connect() as conn:
             return conn.execute("SELECT * FROM cards").fetchall()
