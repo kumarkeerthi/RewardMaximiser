@@ -83,12 +83,28 @@ For full step-by-step deployment (VM creation, NSG ports, systemd, Nginx reverse
 
 ## LLM setup
 
+The recommendation API automatically tries providers in this order:
+
+1. **Local Ollama** (if `OLLAMA_MODEL` is set and Ollama server responds)
+2. **Hugging Face Inference API** (if `HF_API_KEY` is set)
+3. **Deterministic local fallback** (always available)
+
+Use the steps below to configure and verify your preferred provider.
+
 ### Option 1: local Ollama (free)
 
 ```bash
-# run Ollama separately
+# install + run Ollama separately, then pull a model
+ollama serve
+ollama pull llama3.1:8b
 export OLLAMA_MODEL=llama3.1:8b
 ```
+
+Notes:
+
+- Keep `ollama serve` running in a separate terminal/service.
+- If you use a different model, update `OLLAMA_MODEL` accordingly.
+- Default endpoint expected by the app is `http://127.0.0.1:11434`.
 
 ### Option 2: Hugging Face Inference (free tier limits apply)
 
@@ -96,6 +112,32 @@ export OLLAMA_MODEL=llama3.1:8b
 export HF_API_KEY=your_token
 export HF_MODEL=mistralai/Mistral-7B-Instruct-v0.2
 ```
+
+Notes:
+
+- Use a token with Inference API access.
+- Pick an instruction-tuned model available on the Inference API.
+- Keep `HF_MODEL` short and exact (owner/model format).
+
+### Verify your LLM integration
+
+After exporting env vars, restart the app and run a recommendation request:
+
+```bash
+python agent.py web --host 0.0.0.0 --port 8000
+curl -s -X POST http://localhost:8000/api/recommend \
+  -H 'Content-Type: application/json' \
+  -d '{"merchant":"swiggy","amount":1200,"channel":"swiggy"}'
+```
+
+Look for `refined_response` in the JSON output. If provider calls fail, the response still includes a local fallback summary.
+
+### Troubleshooting
+
+- **Fallback summary only**: check env vars are exported in the same shell/service that starts the app.
+- **Ollama not used**: verify `ollama serve` is running and model is pulled.
+- **HF errors**: verify token validity and model availability/rate limits.
+- **systemd deployments**: add `Environment=` entries in your service file and run `sudo systemctl daemon-reload && sudo systemctl restart rewardmaximiser`.
 
 If neither is configured/reachable, the app still returns a deterministic local summary.
 
