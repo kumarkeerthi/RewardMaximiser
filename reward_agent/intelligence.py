@@ -315,14 +315,31 @@ class LLMRefiner:
             return None
 
     def _ollama(self, prompt: str) -> str:
-        model = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
+        model = self._resolve_ollama_model()
+        base_url = self._resolve_ollama_base_url().rstrip("/")
         payload = self._post_json(
-            "http://127.0.0.1:11434/api/generate",
+            f"{base_url}/api/generate",
             {"model": model, "prompt": prompt, "stream": False},
         )
         if isinstance(payload, dict):
             return str(payload.get("response", "")).strip()
         return ""
+
+    def _resolve_ollama_model(self) -> str:
+        return (
+            os.getenv("OLLAMA_MODEL")
+            or os.getenv("LLM_MODEL")
+            or os.getenv("MODEL")
+            or "llama3.1:8b"
+        ).strip()
+
+    def _resolve_ollama_base_url(self) -> str:
+        host = (os.getenv("OLLAMA_BASE_URL") or os.getenv("OLLAMA_HOST") or "").strip()
+        if host:
+            if host.startswith("http://") or host.startswith("https://"):
+                return host
+            return f"http://{host}"
+        return "http://127.0.0.1:11434"
 
     def _huggingface(self, prompt: str) -> str:
         api_key = os.getenv("HF_API_KEY")

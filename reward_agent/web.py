@@ -27,6 +27,17 @@ class AppServices:
 
 
 def _load_cards_payload(filename: str, raw: bytes) -> list[CreditCard]:
+    def _parse_rate_map(value: str) -> dict[str, float]:
+        if not value:
+            return {}
+        try:
+            payload = json.loads(value)
+            if isinstance(payload, dict):
+                return {str(k).strip().lower(): float(v) for k, v in payload.items()}
+        except (ValueError, TypeError):
+            pass
+        return {}
+
     name = filename.lower()
     if name.endswith(".csv"):
         rows = raw.decode("utf-8").strip().splitlines()
@@ -42,6 +53,12 @@ def _load_cards_payload(filename: str, raw: bytes) -> list[CreditCard]:
                     network=payload["network"],
                     reward_rate=float(payload["reward_rate"]),
                     monthly_reward_cap=float(payload["monthly_reward_cap"]),
+                    category_multipliers=_parse_rate_map(payload.get("category_multipliers", "")),
+                    channel_multipliers=_parse_rate_map(payload.get("channel_multipliers", "")),
+                    merchant_multipliers=_parse_rate_map(payload.get("merchant_multipliers", "")),
+                    annual_fee=float(payload.get("annual_fee", 0.0) or 0.0),
+                    milestone_spend=float(payload.get("milestone_spend", 0.0) or 0.0),
+                    milestone_bonus=float(payload.get("milestone_bonus", 0.0) or 0.0),
                 )
             )
         return cards
@@ -173,6 +190,11 @@ def create_handler(db_path: str):
             return True
 
         def _create_card(self, payload: dict) -> CreditCard:
+            def _coerce_map(value: object) -> dict[str, float]:
+                if not isinstance(value, dict):
+                    return {}
+                return {str(k).strip().lower(): float(v) for k, v in value.items()}
+
             required = ["card_id", "bank", "network", "reward_rate", "monthly_reward_cap"]
             if not all(key in payload for key in required):
                 raise ValueError("Missing required card fields")
@@ -182,12 +204,19 @@ def create_handler(db_path: str):
                 network=str(payload["network"]).strip(),
                 reward_rate=float(payload["reward_rate"]),
                 monthly_reward_cap=float(payload["monthly_reward_cap"]),
+                category_multipliers=_coerce_map(payload.get("category_multipliers", {})),
+                channel_multipliers=_coerce_map(payload.get("channel_multipliers", {})),
+                merchant_multipliers=_coerce_map(payload.get("merchant_multipliers", {})),
+                annual_fee=float(payload.get("annual_fee", 0.0) or 0.0),
+                milestone_spend=float(payload.get("milestone_spend", 0.0) or 0.0),
+                milestone_bonus=float(payload.get("milestone_bonus", 0.0) or 0.0),
             )
 
         def _build_recommendation_response(self, payload: dict) -> dict:
             merchant = payload.get("merchant", "")
             amount = float(payload.get("amount", 0))
             channel = payload.get("channel", "all")
+            category = payload.get("category", "other")
             split = bool(payload.get("split", False))
             merchant_url = payload.get("merchant_url", "")
 
@@ -196,9 +225,9 @@ def create_handler(db_path: str):
             monthly = services.db.monthly_spend_by_card()
             rec = Recommender(cards=cards, offers=offers, monthly_spend=monthly)
             ranked = (
-                rec.suggest_split(amount=amount, merchant=merchant, channel=channel)
+                rec.suggest_split(amount=amount, merchant=merchant, channel=channel, category=category)
                 if split
-                else rec.recommend(amount=amount, merchant=merchant, channel=channel)
+                else rec.recommend(amount=amount, merchant=merchant, channel=channel, category=category)
             )
             ranked_dict = rec_to_dict(ranked)
 
@@ -209,6 +238,7 @@ def create_handler(db_path: str):
                     "merchant": merchant,
                     "amount": amount,
                     "channel": channel,
+                    "category": category,
                     "split": split,
                     "recommendations": ranked_dict,
                     "community_insights": social.raw_items,

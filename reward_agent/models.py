@@ -10,6 +10,12 @@ class CreditCard:
     network: str
     reward_rate: float
     monthly_reward_cap: float
+    category_multipliers: dict[str, float] | None = None
+    channel_multipliers: dict[str, float] | None = None
+    merchant_multipliers: dict[str, float] | None = None
+    annual_fee: float = 0.0
+    milestone_spend: float = 0.0
+    milestone_bonus: float = 0.0
 
 
 @dataclass(slots=True)
